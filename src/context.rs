@@ -16,6 +16,7 @@ impl Context {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn api_get<T>(&self, url: &str) -> Result<T, Error>
     where
         T: core::fmt::Debug + DeserializeOwned,

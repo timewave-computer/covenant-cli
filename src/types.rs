@@ -12,6 +12,9 @@ pub(crate) struct Cli {
 pub(crate) enum Commands {
     /// Validate a Covenant deployment
     Validate {
-        
+        /// Path to the metadata file
+        metadata_file: String,
+        /// Path to the instantiation file
+        instantiation_file: String,
     },
 }

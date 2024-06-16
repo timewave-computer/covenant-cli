@@ -15,7 +15,7 @@ async fn main() -> Result<(), Error> {
 
     let ctx = Context::init().await?;
     let cli = Cli::parse();
-    let _res = commands::execute_cmd(&ctx, &cli.command).await?;
+    commands::execute_cmd(&ctx, &cli.command).await?;
 
     Ok(())
 }
