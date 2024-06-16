@@ -22,9 +22,11 @@ fn validate_covenant(
     info!("Validating Covenant deployment");
 
     // Read Covenant metadata file
-    let metadata: toml::Value = toml::from_str(&std::fs::read_to_string(metadata_file)?)?;
+    let metadata: toml::Value = load_toml(metadata_file)?;
+    
     let covenant_metadata = metadata.get("covenant").unwrap().as_table().unwrap();
     debug!("[covenant-metadata] {:?}", covenant_metadata);
+
     let covenant_contract = covenant_metadata
         .get("covenant_contract")
         .unwrap()
@@ -33,8 +35,7 @@ fn validate_covenant(
     info!("Covenant contract: {:?}", covenant_contract);
 
     // Read Covenant instantiation file
-    let instantiation: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(instantiation_file)?)?;
+    let instantiation: serde_json::Value = load_json(instantiation_file)?;
 
     match covenant_contract {
         "valence-covenant-single-party-pol" => {
@@ -56,6 +57,16 @@ fn validate_covenant(
         }
         _ => Err(anyhow::anyhow!("Unsupported covenant contract")),
     }
+}
+
+fn load_toml(metadata_file: &String) -> Result<toml::Value, anyhow::Error> {
+    toml::from_str(&std::fs::read_to_string(metadata_file)?)
+        .with_context(|| "failed loading TOML file")
+}
+
+fn load_json(instantiation_file: &String) -> Result<serde_json::Value, anyhow::Error> {
+    serde_json::from_str(&std::fs::read_to_string(instantiation_file)?)
+        .with_context(|| "failed loading JSON file")
 }
 
 fn validate_swap_covenant(
