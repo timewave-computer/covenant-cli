@@ -119,21 +119,19 @@ fn render_markdown_table(ctx: CovenantValidationContext) {
         }
         is_first_key_msg = true;
     }
-    for (key, messages) in ctx.errors().iter() {
-        for (key, messages) in ctx.errors().iter().sorted_by_key(|x| x.0) {
-            for message in messages {
-                let parts = message.split(": ").collect::<Vec<&str>>();
-                println!(
-                    "| {} | {} | {} | ⛔️ |",
-                    if is_first_key_msg { key } else { "" },
-                    parts.first().unwrap(),
-                    parts.last().unwrap().replace('|', "&#124;")
-                );
-                if is_first_key_msg {
-                    is_first_key_msg = false;
-                }
+    for (key, messages) in ctx.errors().iter().sorted_by_key(|x| x.0) {
+        for message in messages {
+            let parts = message.split(": ").collect::<Vec<&str>>();
+            println!(
+                "| {} | {} | {} | ⛔️ |",
+                if is_first_key_msg { key } else { "" },
+                parts.first().unwrap(),
+                parts.last().unwrap().replace('|', "&#124;")
+            );
+            if is_first_key_msg {
+                is_first_key_msg = false;
             }
-            is_first_key_msg = true;
         }
+        is_first_key_msg = true;
     }
 }
