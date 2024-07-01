@@ -4,14 +4,15 @@ use serde::de::DeserializeOwned;
 
 static USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
-pub struct Context {
+#[derive(Clone, Debug, Default)]
+pub struct CliContext {
     // API clients
     api: Client,
 }
 
-impl Context {
-    pub async fn init() -> Result<Context, Error> {
-        Ok(Context {
+impl CliContext {
+    pub async fn init() -> Result<CliContext, Error> {
+        Ok(CliContext {
             api: Client::builder().user_agent(USER_AGENT).build()?,
         })
     }

@@ -113,6 +113,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.80"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.66",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -268,6 +279,12 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "bytecount"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ce89b21cab1437276d2650d57e971f9d548a2d9037cc231abdc0562b97498ce"
 
 [[package]]
 name = "byteorder"
@@ -475,9 +492,13 @@ name = "covenant-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "base16ct",
+ "base64 0.22.1",
  "clap",
  "dotenv",
  "itertools 0.12.1",
+ "json_to_table",
  "log",
  "pretty_env_logger",
  "reqwest",
@@ -485,6 +506,7 @@ dependencies = [
  "rust_decimal_macros",
  "serde",
  "serde_json",
+ "sha2 0.10.8",
  "tokio",
  "toml",
  "valence-covenant-single-party-pol",
@@ -495,6 +517,7 @@ dependencies = [
 [[package]]
 name = "covenant-macros"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -504,6 +527,7 @@ dependencies = [
 [[package]]
 name = "covenant-utils"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "astroport",
  "bech32",
@@ -519,7 +543,6 @@ dependencies = [
  "prost 0.11.9",
  "serde-json-wasm 0.4.1",
  "sha2 0.10.8",
- "thiserror",
 ]
 
 [[package]]
@@ -575,6 +598,7 @@ dependencies = [
 [[package]]
 name = "cw-fifo"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmwasm-std",
  "cw-storage-plus 1.2.0",
@@ -1342,6 +1366,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "json_to_table"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68a0c7547cb63862591032feaee79da113eb02261fee8223ca425c073943921b"
+dependencies = [
+ "serde_json",
+ "tabled",
+]
+
+[[package]]
 name = "k256"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1617,6 +1651,17 @@ dependencies = [
  "prost-types 0.11.9",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "papergrid"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ad43c07024ef767f9160710b3a6773976194758c7919b17e63b863db0bdf7fb"
+dependencies = [
+ "bytecount",
+ "fnv",
+ "unicode-width",
 ]
 
 [[package]]
@@ -2545,6 +2590,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tabled"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c998b0c8b921495196a48aabaf1901ff28be0760136e31604f7967b0792050e"
+dependencies = [
+ "papergrid",
+ "unicode-width",
+]
+
+[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2844,6 +2899,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
+name = "unicode-width"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
+
+[[package]]
 name = "url"
 version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2881,6 +2942,7 @@ checksum = "a183cf7feeba97b4dd1c0d46788634f6221d87fa961b305bed08c851829efcc0"
 [[package]]
 name = "valence-astroport-liquid-pooler"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "astroport",
  "bech32",
@@ -2897,11 +2959,13 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-clock"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -2917,6 +2981,7 @@ dependencies = [
 [[package]]
 name = "valence-covenant-single-party-pol"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "astroport",
  "bech32",
@@ -2948,6 +3013,7 @@ dependencies = [
 [[package]]
 name = "valence-covenant-swap"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "bech32",
  "cosmos-sdk-proto 0.14.0",
@@ -2976,6 +3042,7 @@ dependencies = [
 [[package]]
 name = "valence-covenant-two-party-pol"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "astroport",
  "bech32",
@@ -3006,6 +3073,7 @@ dependencies = [
 [[package]]
 name = "valence-ibc-forwarder"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "bech32",
  "cosmos-sdk-proto 0.14.0",
@@ -3024,11 +3092,13 @@ dependencies = [
  "serde-json-wasm 0.4.1",
  "sha2 0.10.8",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-interchain-router"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "bech32",
  "cosmos-sdk-proto 0.14.0",
@@ -3046,11 +3116,13 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-native-router"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "bech32",
  "cosmos-sdk-proto 0.14.0",
@@ -3067,11 +3139,13 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-native-splitter"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -3082,11 +3156,13 @@ dependencies = [
  "schemars",
  "serde",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-osmo-liquid-pooler"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "bech32",
  "cosmwasm-schema",
@@ -3105,12 +3181,14 @@ dependencies = [
  "serde",
  "sha2 0.10.8",
  "thiserror",
+ "valence-clock",
  "valence-outpost-osmo-liquid-pooler",
 ]
 
 [[package]]
 name = "valence-outpost-osmo-liquid-pooler"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -3127,6 +3205,7 @@ dependencies = [
 [[package]]
 name = "valence-remote-chain-splitter"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmos-sdk-proto 0.14.0",
  "cosmwasm-schema",
@@ -3141,11 +3220,13 @@ dependencies = [
  "serde",
  "serde-json-wasm 0.4.1",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-single-party-pol-holder"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -3161,6 +3242,7 @@ dependencies = [
 [[package]]
 name = "valence-stride-liquid-staker"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmos-sdk-proto 0.14.0",
  "cosmwasm-schema",
@@ -3174,11 +3256,13 @@ dependencies = [
  "serde",
  "serde-json-wasm 0.4.1",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-swap-holder"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "cosmos-sdk-proto 0.14.0",
  "cosmwasm-schema",
@@ -3191,11 +3275,13 @@ dependencies = [
  "neutron-sdk",
  "serde",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]
 name = "valence-two-party-pol-holder"
 version = "0.1.0"
+source = "git+https://github.com/timewave-computer/covenants?tag=v0.1.0#e41120b6f0e9fe11934b5274033db21cd7deb271"
 dependencies = [
  "astroport",
  "cosmwasm-schema",
@@ -3209,6 +3295,7 @@ dependencies = [
  "schemars",
  "serde",
  "thiserror",
+ "valence-clock",
 ]
 
 [[package]]

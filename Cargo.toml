@@ -5,9 +5,13 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.81"
+async-trait = "0.1.80"
+base16ct = "0.2.0"
+base64 = "0.22.0"
 clap = { version = "4.5.4", features = ["derive"] }
 dotenv = "0.15.0"
 itertools = "0.12.1"
+json_to_table = "0.7.0"
 log = "0.4.21"
 pretty_env_logger = "0.5.0"
 reqwest = { version = "0.12.2", features = ["json"] }
@@ -15,13 +19,14 @@ rust_decimal = { version = "1.35.0", features = ["maths"] }
 rust_decimal_macros = "1.34.2"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
+sha2 = "0.10.8"
 tokio = { version = "1.37.0", features = ["full"] }
 toml = "0.8.14"
 
 # Covenant contracts
-single-party-pol-covenant = { package = "valence-covenant-single-party-pol", path = "../covenants/contracts/single-party-pol-covenant", features = ["library"] }
-swap-covenant = { package = "valence-covenant-swap", path = "../covenants/contracts/swap-covenant", features = ["library"] }
-two-party-pol-covenant = { package = "valence-covenant-two-party-pol", path = "../covenants/contracts/two-party-pol-covenant", features = ["library"] }
+single-party-pol-covenant = { package = "valence-covenant-single-party-pol", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
+swap-covenant = { package = "valence-covenant-swap", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
+two-party-pol-covenant = { package = "valence-covenant-two-party-pol", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
 
 [profile.release]
 lto = true
