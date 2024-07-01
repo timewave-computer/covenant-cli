@@ -45,6 +45,10 @@ impl CovenantValidationContext {
         &self.errors
     }
 
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
     #[allow(unused)]
     pub fn valid(&mut self, key: &'static str, message: String) {
         self.checks.entry(key).or_default().push(message);

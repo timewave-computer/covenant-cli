@@ -1,7 +1,6 @@
 use anyhow::Context;
 use itertools::Itertools;
-use json_to_table::json_to_table;
-use log::{debug, info};
+use log::{debug, error, info};
 
 use crate::{
     types::Commands,
@@ -22,14 +21,12 @@ pub(crate) async fn execute_cmd(
         } => {
             let mut ctx = CovenantValidationContext::default();
             validate_covenant(metadata_file, instantiation_file, &mut ctx).await?;
-            info!("{:?}", &ctx);
-
-            render_markdown_table(ctx);
-
-            // let output = json_to_table(&serde_json::to_value(&ctx).unwrap_or_default())
-            //     .collapse()
-            //     .to_string();
-            // println!("{}", output);
+            render_markdown_table(&ctx);
+            if ctx.has_errors() {
+                let err_msg = "Covenant validation failed";
+                error!("{}", err_msg);
+                anyhow::bail!(err_msg);
+            }
             Ok(())
         }
     }
@@ -101,7 +98,7 @@ fn load_json(instantiation_file: &String) -> Result<serde_json::Value, anyhow::E
         .with_context(|| "failed loading JSON file")
 }
 
-fn render_markdown_table(ctx: CovenantValidationContext) {
+fn render_markdown_table(ctx: &CovenantValidationContext) {
     let mut is_first_key_msg = true;
     println!("| Key | Field | Message | Status |\n| :--- | :--- | :--- | :---: |");
     for (key, messages) in ctx.checks().iter().sorted_by_key(|x| x.0) {

@@ -17,7 +17,5 @@ async fn main() -> Result<(), Error> {
 
     let ctx = CliContext::init().await?;
     let cli = Cli::parse();
-    commands::execute_cmd(&ctx, &cli.command).await?;
-
-    Ok(())
+    commands::execute_cmd(&ctx, &cli.command).await
 }
