@@ -5,35 +5,33 @@ use rust_decimal::prelude::{One, Zero};
 use rust_decimal::Decimal;
 use sha2::{Digest, Sha256};
 use single_party_pol_covenant::msg as sppc;
-use std::ops::Range;
 
 use super::{CovenantValidationContext, Validate};
 use crate::utils::assets::get_chain_asset_info;
-use crate::utils::astroport::{
-    get_astroport_pair_info, get_astroport_pool_info, CustomPair, StablePair, XykPair,
-};
 use crate::utils::chain::get_chain_info;
 use crate::utils::path::get_path_info;
 use crate::validations::{
-    get_covenant_code_ids, verify_code_id, NEUTRON_CHAIN_NAME, STRIDE_CHAIN_NAME, TRANSFER_PORT_ID,
+    astroport::verify_astroport_liquid_pooler_config,
+    contracts::{get_covenant_code_ids, verify_code_id},
+    NEUTRON_CHAIN_NAME, STRIDE_CHAIN_NAME, TRANSFER_PORT_ID,
 };
 use crate::{required_or_ignored, verify_equals};
 
 /// Validate the single party POL covenant instantiation message
 pub struct SinglePartyPolCovenantInstMsg(single_party_pol_covenant::msg::InstantiateMsg);
 
-impl SinglePartyPolCovenantInstMsg {
+impl<'a> SinglePartyPolCovenantInstMsg {
     pub fn new(inner: single_party_pol_covenant::msg::InstantiateMsg) -> Self {
         SinglePartyPolCovenantInstMsg(inner)
     }
 
-    pub fn into_boxed(self) -> Box<dyn Validate> {
+    pub fn into_boxed(self) -> Box<dyn Validate<'a>> {
         Box::new(self)
     }
 }
 
 #[async_trait]
-impl Validate for SinglePartyPolCovenantInstMsg {
+impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
     async fn validate(&self, ctx: &mut CovenantValidationContext) -> Result<(), Error> {
         // Validate the single party POL covenant instantiation message
         let msg = &self.0;
@@ -111,7 +109,7 @@ impl Validate for SinglePartyPolCovenantInstMsg {
 
         // Covenant party config
         key = "covenant_party_config";
-        let party_chain_name = ctx.covenant_party_chain_name();
+        let party_chain_name = ctx.party_a_chain_name();
         let path_info =
             get_path_info(&ctx.cli_context, &party_chain_name, NEUTRON_CHAIN_NAME).await?;
         let (expected_connection_id, expected_h2p_channel_id, expected_p2h_channel_id) =
@@ -283,61 +281,48 @@ impl Validate for SinglePartyPolCovenantInstMsg {
             get_path_info(&ctx.cli_context, NEUTRON_CHAIN_NAME, STRIDE_CHAIN_NAME).await?;
         let (expected_connection_id, expected_channel_id, reverse_channel_id) =
             if path_info.chain_1.chain_name == NEUTRON_CHAIN_NAME {
-                (
-                    path_info.chain_1.connection_id.clone(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_2.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_2.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_1.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_1.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                )
+                path_info
+                    .channels
+                    .iter()
+                    .filter_map(|c| {
+                        if c.chain_2.port_id == TRANSFER_PORT_ID
+                            && ((ctx.party_a_channel_uses_wasm_port
+                                && c.chain_1.port_id.starts_with("wasm."))
+                                || c.chain_1.port_id == TRANSFER_PORT_ID)
+                        {
+                            Some((
+                                path_info.chain_1.connection_id.clone(),
+                                c.chain_2.channel_id.clone(),
+                                c.chain_1.channel_id.clone(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .next()
+                    .unwrap()
             } else {
-                (
-                    path_info.chain_2.connection_id.clone(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_1.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_1.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_2.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_2.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                )
+                path_info
+                    .channels
+                    .iter()
+                    .filter_map(|c| {
+                        if c.chain_1.port_id == TRANSFER_PORT_ID
+                            && ((ctx.party_a_channel_uses_wasm_port
+                                && c.chain_2.port_id.starts_with("wasm."))
+                                || (!ctx.party_a_channel_uses_wasm_port
+                                    && c.chain_2.port_id == TRANSFER_PORT_ID))
+                        {
+                            Some((
+                                path_info.chain_1.connection_id.clone(),
+                                c.chain_1.channel_id.clone(),
+                                c.chain_2.channel_id.clone(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .next()
+                    .unwrap()
             };
 
         field = "ls_neutron_connection_id";
@@ -433,14 +418,14 @@ impl Validate for SinglePartyPolCovenantInstMsg {
         );
 
         field = "ls_share";
-        let ls_share = Decimal::new(
+        let ls_share = Decimal::try_from_i128_with_scale(
             msg.remote_chain_splitter_config
                 .ls_share
                 .atomics()
                 .u128()
                 .try_into()?,
             18,
-        );
+        )?;
         if ls_share >= Decimal::zero() && ls_share <= Decimal::one() {
             ctx.valid_field(key, field, "verified".to_owned());
         } else {
@@ -452,14 +437,14 @@ impl Validate for SinglePartyPolCovenantInstMsg {
         }
 
         field = "native_share";
-        let native_share = Decimal::new(
+        let native_share = Decimal::try_from_i128_with_scale(
             msg.remote_chain_splitter_config
                 .native_share
                 .atomics()
                 .u128()
                 .try_into()?,
             18,
-        );
+        )?;
         if native_share >= Decimal::zero() && native_share <= Decimal::one() {
             ctx.valid_field(key, field, "verified".to_owned());
         } else {
@@ -591,7 +576,7 @@ impl Validate for SinglePartyPolCovenantInstMsg {
 
             let ls_path_info = get_path_info(
                 &ctx.cli_context,
-                &ctx.covenant_party_chain_name(),
+                &ctx.party_a_chain_name(),
                 STRIDE_CHAIN_NAME,
             )
             .await?;
@@ -691,198 +676,15 @@ impl Validate for SinglePartyPolCovenantInstMsg {
         key = "liquid_pooler_config";
         match &msg.liquid_pooler_config {
             sppc::LiquidPoolerConfig::Astroport(lp_cfg) => {
-                field = "pool_address";
-                let pair_info =
-                    get_astroport_pair_info(&ctx.cli_context, &lp_cfg.pool_address).await?;
-                debug!("astroport pair info: {:?}", pair_info);
-                ctx.valid_field(key, field, "verified".to_owned());
-
-                field = "pool_pair_type";
-                debug!(
-                    "liquid_pooler_config/pool_pair_type: expected {:?} | actual {}",
-                    pair_info.pair_type, lp_cfg.pool_pair_type
-                );
-                match (
-                    pair_info.pair_type.xyk,
-                    pair_info.pair_type.stable,
-                    pair_info.pair_type.custom,
-                    lp_cfg.pool_pair_type.to_string().as_ref(),
-                ) {
-                    (Some(XykPair {}), None, None, "xyk")
-                    | (None, Some(StablePair {}), None, "stable") => {
-                        ctx.valid_field(key, field, "verified".to_owned());
-                    }
-                    (None, None, Some(CustomPair(custom_type)), _) => {
-                        if lp_cfg.pool_pair_type.to_string() == format!("custom-{}", custom_type) {
-                            ctx.valid_field(key, field, "verified".to_owned());
-                        } else {
-                            ctx.invalid_field(key, field, "invalid pool pair type".to_owned());
-                        }
-                    }
-                    _ => {
-                        ctx.invalid_field(key, field, "invalid pool pair type".to_owned());
-                    }
-                }
-
-                field = "asset_a_denom";
-                let pair_asset_a = pair_info.asset_infos.first().unwrap();
-                let pair_asset_a_denom = pair_asset_a
-                    .native_token
-                    .as_ref()
-                    .map(|t| t.denom.clone())
-                    .unwrap_or_default();
-                debug!(
-                    "liquid_pooler_config/asset_a_denom: expected {} | actual {}",
-                    pair_asset_a_denom, lp_cfg.asset_a_denom
-                );
-                let asset_a_is_staked_asset = lp_cfg.asset_a_denom == ls_denom_on_neutron;
-                let expected_asset_a = if asset_a_is_staked_asset {
-                    ls_denom_on_neutron.clone()
-                } else {
-                    native_denom.clone()
-                };
-                if pair_asset_a_denom == lp_cfg.asset_a_denom
-                    && expected_asset_a == lp_cfg.asset_a_denom
-                {
-                    ctx.valid_field(key, field, "verified".to_owned());
-                } else {
-                    ctx.invalid_field(
-                        key,
-                        field,
-                        format!(
-                            "invalid asset A denom '{}': should be '{}'",
-                            lp_cfg.asset_a_denom, expected_asset_a
-                        ),
-                    );
-                }
-
-                field = "asset_b_denom";
-                let asset_b = pair_info.asset_infos.last().unwrap();
-                let asset_b_denom = asset_b
-                    .native_token
-                    .as_ref()
-                    .map(|t| t.denom.clone())
-                    .unwrap_or_default();
-                debug!(
-                    "liquid_pooler_config/asset_b_denom: expected {} | actual {}",
-                    asset_b_denom, lp_cfg.asset_b_denom
-                );
-                let expected_asset_b = if asset_a_is_staked_asset {
-                    native_denom
-                } else {
-                    ls_denom_on_neutron
-                };
-                if asset_b_denom == lp_cfg.asset_b_denom && expected_asset_b == lp_cfg.asset_b_denom
-                {
-                    ctx.valid_field(key, field, "verified".to_owned());
-                } else {
-                    ctx.invalid_field(
-                        key,
-                        field,
-                        format!(
-                            "invalid asset B denom '{}': should be '{}'",
-                            lp_cfg.asset_b_denom, expected_asset_b
-                        ),
-                    );
-                }
-
-                // Pool price config
-                key = "pool_price_config";
-                let pool_info =
-                    get_astroport_pool_info(&ctx.cli_context, &lp_cfg.pool_address).await?;
-                debug!("astroport pool info: {:?}", pool_info);
-
-                let asset_a_pool_amount = pool_info
-                    .assets
-                    .first()
-                    .unwrap()
-                    .amount
-                    .parse::<u128>()
-                    .unwrap();
-                let asset_b_pool_amount = pool_info
-                    .assets
-                    .last()
-                    .unwrap()
-                    .amount
-                    .parse::<u128>()
-                    .unwrap();
-                let current_pool_price = Decimal::from(asset_a_pool_amount)
-                    .checked_div(Decimal::from(asset_b_pool_amount))
-                    .unwrap_or_default();
-                debug!(
-                    "pool_price_config/current pool price: {} / {} = {}",
-                    asset_a_pool_amount, asset_b_pool_amount, current_pool_price
-                );
-
-                field = "expected_spot_price";
-                // Assume expected spot price is within 5% range of current pool price
-                let expected_spot_price = Decimal::new(
-                    msg.pool_price_config
-                        .expected_spot_price
-                        .atomics()
-                        .u128()
-                        .try_into()?,
-                    18,
-                );
-                debug!(
-                    "pool_price_config/expected_spot_price: {:.4}",
-                    expected_spot_price
-                );
-                if (Range {
-                    start: current_pool_price.checked_mul(Decimal::new(95, 2)).unwrap(),
-                    end: current_pool_price
-                        .checked_mul(Decimal::new(105, 2))
-                        .unwrap(),
-                })
-                .contains(&expected_spot_price)
-                {
-                    ctx.valid_field(
-                        key,
-                        field,
-                        "within 5% range of current pool price".to_owned(),
-                    );
-                } else {
-                    // Just a warning for now
-                    ctx.valid_field(
-                        key,
-                        field,
-                        format!(
-                            "expected_spot_price: {:.4} | current_pool_price: {:.4}\n\
-                            outside of 5% range of current pool price",
-                            expected_spot_price, current_pool_price
-                        ),
-                    );
-                }
-
-                field = "acceptable_price_spread";
-                // Compute acceptable price spread based on expected spot price
-                // Note: we should verify this based on a % provided in the metadata
-                let acceptable_price_spread = Decimal::new(
-                    msg.pool_price_config
-                        .acceptable_price_spread
-                        .atomics()
-                        .u128()
-                        .try_into()?,
-                    18,
-                );
-                debug!(
-                    "pool_price_config/acceptable_price_spread: {:.4}",
-                    acceptable_price_spread
-                );
-                let acceptable_price_spread_pct = acceptable_price_spread
-                    .checked_div(expected_spot_price)
-                    .unwrap_or_default()
-                    .checked_mul(Decimal::new(100, 0))
-                    .unwrap();
-                debug!(
-                    "pool_price_config/acceptable price spread: {:.0}%",
-                    acceptable_price_spread_pct
-                );
-                ctx.valid_field(key, field, format!("{:.0}%", acceptable_price_spread_pct));
-
-                key = "liquid_pooler_config";
-                field = "single_side_lp_limits";
-                // TODO: Validate single side LP limits
+                verify_astroport_liquid_pooler_config(
+                    ctx,
+                    key,
+                    native_denom,
+                    ls_denom_on_neutron,
+                    lp_cfg,
+                    &msg.pool_price_config,
+                )
+                .await?;
             }
             sppc::LiquidPoolerConfig::Osmosis(_lp_cfg) => {
                 ctx.invalid(

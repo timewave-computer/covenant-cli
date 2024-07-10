@@ -50,11 +50,12 @@ pub async fn get_chain_asset_info(
     let assets_obj = json["assets"].take();
     let assets: Vec<AssetInfo> = serde_json::from_value(assets_obj).unwrap_or_default();
     let asset = assets.into_iter().find(|asset| {
-        asset.name == asset_name
+        (asset.name == asset_name
             || asset.symbol == asset_name
             || asset.denom == asset_name
             || asset.display == asset_name
-            || asset.base == asset_name
+            || asset.base == asset_name)
+            && !(asset.name.contains("(old)") || asset.symbol.contains("(old)"))
     });
     if let Some(asset) = asset {
         Ok(asset)
