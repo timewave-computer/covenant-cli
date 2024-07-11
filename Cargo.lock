@@ -496,7 +496,9 @@ dependencies = [
  "base16ct",
  "base64 0.22.1",
  "clap",
+ "cosmwasm-std",
  "covenant-utils",
+ "cw-utils 1.0.3",
  "dotenv",
  "itertools 0.12.1",
  "json_to_table",
@@ -514,6 +516,7 @@ dependencies = [
  "valence-covenant-single-party-pol",
  "valence-covenant-swap",
  "valence-covenant-two-party-pol",
+ "valence-two-party-pol-holder",
 ]
 
 [[package]]

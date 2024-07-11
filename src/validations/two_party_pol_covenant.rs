@@ -1,14 +1,17 @@
 use anyhow::Error;
 use async_trait::async_trait;
+use cw_utils::Expiration;
 use log::{debug, info};
 use rust_decimal::Decimal;
 use sha2::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 use two_party_pol_covenant::msg as tppc;
 
 use super::{CovenantValidationContext, Validate};
 use crate::utils::assets::get_chain_asset_info;
 use crate::utils::chain::get_chain_info;
-use crate::utils::path::get_path_info;
+use crate::utils::neutron::get_latest_block;
+use crate::utils::path::{get_path_info, IBCPath};
 use crate::validations::astroport::verify_astroport_liquid_pooler_config;
 use crate::validations::{
     contracts::{get_covenant_code_ids, verify_code_id},
@@ -40,64 +43,52 @@ impl<'a> Validate<'a> for TwoPartyPolCovenantInstMsg {
 
         // Covenant label
         let mut key = "covenant";
-        let mut field = "";
+        let mut field = "label";
         if msg.label.is_empty() {
-            ctx.invalid_field(key, "label", "required".to_owned());
+            ctx.invalid_field(key, field, "required".to_owned());
         } else {
-            ctx.valid_field(key, "label", "valid".to_owned());
+            ctx.valid_field(key, field, "valid".to_owned());
         }
 
         // Contract Codes
         key = "contract_codes";
-        match get_covenant_code_ids("v0.1.0".to_owned()).await {
-            Ok(code_ids) => {
-                verify_code_id(
-                    ctx,
-                    "ibc_forwarder_code",
-                    &code_ids,
-                    "ibc_forwarder",
-                    msg.contract_codes.ibc_forwarder_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "holder_code",
-                    &code_ids,
-                    "two_party_pol_holder",
-                    msg.contract_codes.holder_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "clock_code",
-                    &code_ids,
-                    "clock",
-                    msg.contract_codes.clock_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "interchain_router_code",
-                    &code_ids,
-                    "interchain_router",
-                    msg.contract_codes.interchain_router_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "native_router_code",
-                    &code_ids,
-                    "native_router",
-                    msg.contract_codes.native_router_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "liquid_pooler_code",
-                    &code_ids,
-                    "astroport_liquid_pooler",
-                    msg.contract_codes.liquid_pooler_code,
-                );
-            }
-            Err(e) => {
-                ctx.invalid(key, e.to_string());
-            }
+        verify_two_party_pol_covenant_code_ids(ctx, key, &msg.contract_codes).await?;
+
+        // Covenant type
+        key = "covenant";
+        field = "covenant_type";
+        ctx.valid_field(key, field, "verified".to_owned());
+        // match msg.covenant_type {
+        //     valence_two_party_pol_holder::msg::CovenantType::Side => {}
+        //     valence_two_party_pol_holder::msg::CovenantType::Share => {}
+        // }
+
+        // Party shares
+        if msg.party_a_share + msg.party_b_share == cosmwasm_std::Decimal::one() {
+            ctx.valid_field(key, "party_a_share", "verified".to_owned());
+            ctx.valid_field(key, "party_b_share", "verified".to_owned());
+        } else {
+            ctx.invalid_field(
+                key,
+                "party_b_share",
+                "invalid share: sum of shares should be 1.0".to_owned(),
+            );
+            ctx.invalid_field(
+                key,
+                "party_b_share",
+                "invalid share: sum of shares should be 1.0".to_owned(),
+            );
         }
+
+        // Deposit deadline
+        field = "deposit_deadline";
+        verify_deposit_deadline(ctx, key, field, msg.deposit_deadline).await?;
+
+        // Lockup config
+        field = "lockup_config";
+        verify_deposit_deadline(ctx, key, field, msg.lockup_config).await?;
+
+        //TODO: Lockup config should be later than deposit deadline
 
         // Party A config
         key = "party_a_config";
@@ -123,8 +114,8 @@ impl<'a> Validate<'a> for TwoPartyPolCovenantInstMsg {
                 verify_astroport_liquid_pooler_config(
                     ctx,
                     key,
-                    party_native_denom(&msg.party_a_config),
-                    party_native_denom(&msg.party_b_config),
+                    msg.party_a_config.get_native_denom(),
+                    msg.party_b_config.get_native_denom(),
                     lp_cfg,
                     &msg.pool_price_config,
                 )
@@ -146,6 +137,51 @@ impl<'a> Validate<'a> for TwoPartyPolCovenantInstMsg {
             }
         }
 
+        // Splits
+        key = "splits";
+        field = "";
+        let party_a_denom = msg.party_a_config.get_native_denom();
+        let party_a_receiver = msg.party_a_config.get_final_receiver_address();
+        let party_b_denom = msg.party_b_config.get_native_denom();
+        let party_b_receiver = msg.party_b_config.get_final_receiver_address();
+        match &msg.splits.keys().cloned().collect::<Vec<_>>()[..] {
+            [denom_1, denom_2]
+                if (denom_1 == &party_a_denom && denom_2 == &party_b_denom)
+                    || (denom_2 == &party_a_denom && denom_1 == &party_b_denom) =>
+            {
+                let denom_1_receivers = &msg.splits[denom_1].receivers;
+                let denom_2_receivers = &msg.splits[denom_2].receivers;
+                if denom_1_receivers.contains_key(&party_a_receiver)
+                    && denom_1_receivers.contains_key(&party_b_receiver)
+                    && denom_1_receivers[&party_a_receiver] == cosmwasm_std::Decimal::one()
+                    && denom_1_receivers
+                        .iter()
+                        .map(|r| r.1)
+                        .sum::<cosmwasm_std::Decimal>()
+                        == cosmwasm_std::Decimal::one()
+                    && denom_2_receivers.contains_key(&party_a_receiver)
+                    && denom_2_receivers.contains_key(&party_b_receiver)
+                    && denom_2_receivers[&party_b_receiver] == cosmwasm_std::Decimal::one()
+                    && denom_2_receivers
+                        .iter()
+                        .map(|r| r.1)
+                        .sum::<cosmwasm_std::Decimal>()
+                        == cosmwasm_std::Decimal::one()
+                {
+                    ctx.valid_field(key, field, "verified".to_owned());
+                } else {
+                    ctx.invalid_field(
+                        key,
+                        field,
+                        "invalid splits: sum of splits should be 1.0".to_owned(),
+                    );
+                }
+            }
+            _ => {
+                ctx.invalid_field(key, field, "invalid splits: unexpected denoms".to_owned());
+            }
+        }
+
         Ok(())
     }
 }
@@ -157,15 +193,16 @@ async fn verify_party_config<'a>(
     party_config: &tppc::CovenantPartyConfig,
     _party_channel_uses_wasm_port: bool,
 ) -> Result<(), Error> {
-    let mut field = "";
     match party_config {
         tppc::CovenantPartyConfig::Native(native_party) => {
-            field = "native_denom";
-            let party_chain_info = get_chain_info(&ctx.cli_context, &party_chain_name).await?;
+            let mut field = "native_denom";
+            let party_chain_info = get_chain_info(&ctx.cli_context, party_chain_name).await?;
             let party_chain_denom = party_chain_info.denom.clone();
             let mut party_base_denom = party_chain_denom.clone();
             let mut party_base_denom_decimals = party_chain_info.decimals;
             let mut native_denom = native_party.native_denom.clone();
+
+            // Simple case: denom is the chain's native token
             if native_denom == party_chain_denom {
                 verify_equals!(
                     ctx,
@@ -177,7 +214,7 @@ async fn verify_party_config<'a>(
                 );
             } else {
                 // Native denom is not the chain's native token
-                match get_chain_asset_info(&ctx.cli_context, &party_chain_name, &native_denom).await
+                match get_chain_asset_info(&ctx.cli_context, party_chain_name, &native_denom).await
                 {
                     Ok(asset_info) => {
                         party_base_denom = asset_info.base;
@@ -196,17 +233,14 @@ async fn verify_party_config<'a>(
                         if native_denom.starts_with('u') {
                             let native_denom_tmp = native_denom.clone();
                             let asset_name = native_denom_tmp.strip_prefix('u').unwrap();
-                            if let Ok(asset_info) = get_chain_asset_info(
-                                &ctx.cli_context,
-                                &party_chain_name,
-                                asset_name,
-                            )
-                            .await
+                            if let Ok(asset_info) =
+                                get_chain_asset_info(&ctx.cli_context, party_chain_name, asset_name)
+                                    .await
                             {
                                 if (asset_name == asset_info.denom)
                                     || (asset_name == asset_info.display)
                                 {
-                                    native_denom = asset_name.to_owned();
+                                    asset_name.clone_into(&mut native_denom);
                                     party_base_denom = asset_info.base;
                                     party_base_denom_decimals = asset_info.decimals;
                                     ctx.valid_field(
@@ -224,6 +258,7 @@ async fn verify_party_config<'a>(
                     }
                 }
             }
+
             field = "contribution";
             // remote_chain_denom = interchain_party.remote_chain_denom.clone();
             if native_party.contribution.denom != party_base_denom {
@@ -245,63 +280,22 @@ async fn verify_party_config<'a>(
                     format!("{:.2} {}", contribution_amount, party_base_denom),
                 );
             }
-            field = "party_receiver_addr";
-            field = "addr";
+
+            //TODO: validate addresses
+            // field = "party_receiver_addr";
+            // field = "addr";
         }
         tppc::CovenantPartyConfig::Interchain(interchain_party) => {
             let path_info =
-                get_path_info(&ctx.cli_context, &party_chain_name, NEUTRON_CHAIN_NAME).await?;
+                get_path_info(&ctx.cli_context, party_chain_name, NEUTRON_CHAIN_NAME).await?;
             debug!(
                 "party_a_uses_wasm_port: {}",
                 ctx.party_a_channel_uses_wasm_port
             );
             let (expected_connection_id, expected_h2p_channel_id, expected_p2h_channel_id) =
-                if path_info.chain_1.chain_name == NEUTRON_CHAIN_NAME {
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_1.port_id == TRANSFER_PORT_ID
-                                && ((ctx.party_a_channel_uses_wasm_port
-                                    && c.chain_2.port_id.starts_with("wasm."))
-                                    || (!ctx.party_a_channel_uses_wasm_port
-                                        && c.chain_2.port_id == TRANSFER_PORT_ID))
-                            {
-                                Some((
-                                    path_info.chain_1.connection_id.clone(),
-                                    c.chain_1.channel_id.clone(),
-                                    c.chain_2.channel_id.clone(),
-                                ))
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap()
-                } else {
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_2.port_id == TRANSFER_PORT_ID
-                                && ((ctx.party_a_channel_uses_wasm_port
-                                    && c.chain_1.port_id.starts_with("wasm."))
-                                    || c.chain_1.port_id == TRANSFER_PORT_ID)
-                            {
-                                Some((
-                                    path_info.chain_1.connection_id.clone(),
-                                    c.chain_2.channel_id.clone(),
-                                    c.chain_1.channel_id.clone(),
-                                ))
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap()
-                };
+                get_path_connection_and_channels(&path_info, ctx.party_a_channel_uses_wasm_port);
 
-            field = "party_chain_connection_id";
+            let mut field = "party_chain_connection_id";
             let party_chain_connection_id = interchain_party.party_chain_connection_id.clone();
             verify_equals!(
                 ctx,
@@ -338,7 +332,7 @@ async fn verify_party_config<'a>(
 
             // TODO: fix logic to handle another asset than the chain's native asset
             field = "remote_chain_denom";
-            let party_chain_info = get_chain_info(&ctx.cli_context, &party_chain_name).await?;
+            let party_chain_info = get_chain_info(&ctx.cli_context, party_chain_name).await?;
             let party_chain_denom = party_chain_info.denom.clone();
             let mut party_base_denom = party_chain_denom.clone();
             let mut party_base_denom_decimals = party_chain_info.decimals;
@@ -354,7 +348,7 @@ async fn verify_party_config<'a>(
                 );
             } else {
                 // Remote denom is not the chain's native token
-                match get_chain_asset_info(&ctx.cli_context, &party_chain_name, &remote_chain_denom)
+                match get_chain_asset_info(&ctx.cli_context, party_chain_name, &remote_chain_denom)
                     .await
                 {
                     Ok(asset_info) => {
@@ -374,17 +368,14 @@ async fn verify_party_config<'a>(
                         if remote_chain_denom.starts_with('u') {
                             let remote_chain_denom_tmp = remote_chain_denom.clone();
                             let asset_name = remote_chain_denom_tmp.strip_prefix('u').unwrap();
-                            if let Ok(asset_info) = get_chain_asset_info(
-                                &ctx.cli_context,
-                                &party_chain_name,
-                                asset_name,
-                            )
-                            .await
+                            if let Ok(asset_info) =
+                                get_chain_asset_info(&ctx.cli_context, party_chain_name, asset_name)
+                                    .await
                             {
                                 if (asset_name == asset_info.denom)
                                     || (asset_name == asset_info.display)
                                 {
-                                    remote_chain_denom = asset_name.to_owned();
+                                    asset_name.clone_into(&mut remote_chain_denom);
                                     party_base_denom = asset_info.base;
                                     party_base_denom_decimals = asset_info.decimals;
                                     ctx.valid_field(
@@ -428,7 +419,7 @@ async fn verify_party_config<'a>(
             );
 
             field = "contribution";
-            remote_chain_denom = interchain_party.remote_chain_denom.clone();
+            remote_chain_denom.clone_from(&interchain_party.remote_chain_denom);
             debug!("party_base_denom_decimals: {}", party_base_denom_decimals);
             if interchain_party.contribution.denom != remote_chain_denom {
                 ctx.invalid_field(
@@ -451,21 +442,155 @@ async fn verify_party_config<'a>(
                 );
             }
 
-            field = "party_receiver_addr";
-            field = "addr";
-            field = "denom_to_pfm_map";
-            field = "fallback_address";
+            // TODO: Validate the rest of the covenant party config
+            // field = "party_receiver_addr";
+            // field = "addr";
+            // field = "denom_to_pfm_map";
+            // field = "fallback_address";
         }
     }
 
     Ok(())
 }
 
-fn party_native_denom(party_config: &tppc::CovenantPartyConfig) -> String {
-    match party_config {
-        tppc::CovenantPartyConfig::Native(native_party) => native_party.native_denom.clone(),
-        tppc::CovenantPartyConfig::Interchain(interchain_party) => {
-            interchain_party.native_denom.clone()
+async fn verify_two_party_pol_covenant_code_ids<'a>(
+    ctx: &mut CovenantValidationContext<'a>,
+    key: &'a str,
+    contract_code_ids: &tppc::CovenantContractCodeIds,
+) -> Result<(), Error> {
+    match get_covenant_code_ids("v0.1.0".to_owned()).await {
+        Ok(code_ids) => {
+            verify_code_id(
+                ctx,
+                "ibc_forwarder_code",
+                &code_ids,
+                "ibc_forwarder",
+                contract_code_ids.ibc_forwarder_code,
+            );
+            verify_code_id(
+                ctx,
+                "holder_code",
+                &code_ids,
+                "two_party_pol_holder",
+                contract_code_ids.holder_code,
+            );
+            verify_code_id(
+                ctx,
+                "clock_code",
+                &code_ids,
+                "clock",
+                contract_code_ids.clock_code,
+            );
+            verify_code_id(
+                ctx,
+                "interchain_router_code",
+                &code_ids,
+                "interchain_router",
+                contract_code_ids.interchain_router_code,
+            );
+            verify_code_id(
+                ctx,
+                "native_router_code",
+                &code_ids,
+                "native_router",
+                contract_code_ids.native_router_code,
+            );
+            verify_code_id(
+                ctx,
+                "liquid_pooler_code",
+                &code_ids,
+                "astroport_liquid_pooler",
+                contract_code_ids.liquid_pooler_code,
+            );
+        }
+        Err(e) => {
+            ctx.invalid(key, e.to_string());
         }
     }
+    Ok(())
+}
+
+fn get_path_connection_and_channels(
+    path_info: &IBCPath,
+    channel_uses_wasm_port: bool,
+) -> (String, String, String) {
+    if path_info.chain_1.chain_name == NEUTRON_CHAIN_NAME {
+        path_info
+            .channels
+            .iter()
+            .filter_map(|c| {
+                if c.chain_1.port_id == TRANSFER_PORT_ID
+                    && ((channel_uses_wasm_port && c.chain_2.port_id.starts_with("wasm."))
+                        || (!channel_uses_wasm_port && c.chain_2.port_id == TRANSFER_PORT_ID))
+                {
+                    Some((
+                        path_info.chain_1.connection_id.clone(),
+                        c.chain_1.channel_id.clone(),
+                        c.chain_2.channel_id.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .next()
+            .unwrap()
+    } else {
+        path_info
+            .channels
+            .iter()
+            .filter_map(|c| {
+                if c.chain_2.port_id == TRANSFER_PORT_ID
+                    && ((channel_uses_wasm_port && c.chain_1.port_id.starts_with("wasm."))
+                        || c.chain_1.port_id == TRANSFER_PORT_ID)
+                {
+                    Some((
+                        path_info.chain_1.connection_id.clone(),
+                        c.chain_2.channel_id.clone(),
+                        c.chain_1.channel_id.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .next()
+            .unwrap()
+    }
+}
+
+async fn verify_deposit_deadline<'a>(
+    ctx: &mut CovenantValidationContext<'a>,
+    key: &'a str,
+    field: &'a str,
+    deadline: Expiration,
+) -> Result<(), Error> {
+    match deadline {
+        Expiration::AtHeight(height) => {
+            let cur_block = get_latest_block(&ctx.cli_context).await?;
+            if (height as u128) < cur_block {
+                ctx.valid_field(key, field, "verified".to_owned());
+            } else {
+                ctx.invalid_field(
+                    key,
+                    field,
+                    "invalid block height: should be in the future".to_owned(),
+                );
+            }
+        }
+        Expiration::AtTime(timestamp) => {
+            let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
+            if timestamp.seconds() < now.as_secs() {
+                ctx.valid_field(key, field, "verified".to_owned());
+            } else {
+                ctx.invalid_field(
+                    key,
+                    field,
+                    "invalid timestamp: should be in the future".to_owned(),
+                );
+            }
+        }
+        Expiration::Never {} => {
+            ctx.valid_field(key, field, "verified (note: never expires)".to_owned());
+        }
+    }
+    Ok(())
 }

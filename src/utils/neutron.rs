@@ -17,10 +17,9 @@ pub async fn get_latest_block(ctx: &CliContext) -> Result<u128, anyhow::Error> {
         .await?;
     let header_obj = json["result"]["block"]["header"].take();
     let header: BlockHeader = serde_json::from_value(header_obj).unwrap_or_default();
-    
+
     header
         .height
         .parse::<u128>()
-        .map_err(|e| anyhow::anyhow!("Error parsing block height: {:?}", e)
-    )
+        .map_err(|e| anyhow::anyhow!("Error parsing block height: {:?}", e))
 }

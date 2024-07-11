@@ -41,11 +41,11 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
 
         // Covenant label
         let mut key = "covenant";
-        let mut field = "";
+        let mut field = "label";
         if msg.label.is_empty() {
-            ctx.invalid_field(key, "label", "required".to_owned());
+            ctx.invalid_field(key, field, "required".to_owned());
         } else {
-            ctx.valid_field(key, "label", "valid".to_owned());
+            ctx.valid_field(key, field, "valid".to_owned());
         }
 
         // Contract Codes
@@ -270,10 +270,10 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
         }
 
         // TODO: Validate the rest of the covenant party config
-        field = "party_receiver_addr";
-        field = "addr";
-        field = "denom_to_pfm_map";
-        field = "fallback_address";
+        // field = "party_receiver_addr";
+        // field = "addr";
+        // field = "denom_to_pfm_map";
+        // field = "fallback_address";
 
         // LS info (Neutron -> Stride)
         key = "ls_info";

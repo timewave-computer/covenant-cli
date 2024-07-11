@@ -39,6 +39,7 @@ impl<'a> CovenantValidationContext<'a> {
         self.party_a_chain_name = party;
     }
 
+    #[allow(dead_code)]
     pub fn party_a_channel_uses_wasm_port(&self) -> bool {
         self.party_a_channel_uses_wasm_port
     }

@@ -64,7 +64,9 @@ pub enum Tag {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
+    #[allow(dead_code)]
     pub name: String,
+    #[allow(dead_code)]
     #[serde(rename = "type")]
     pub type_field: String,
 }

@@ -203,9 +203,9 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
     );
     ctx.valid_field(key, field, format!("{:.0}%", acceptable_price_spread_pct));
 
-    // key = "liquid_pooler_config";é
-    field = "single_side_lp_limits";
     // TODO: Validate single side LP limits
+    // key = "liquid_pooler_config"
+    // field = "single_side_lp_limits";
 
     Ok(())
 }
