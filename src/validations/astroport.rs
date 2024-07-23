@@ -227,7 +227,7 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
         "liquid_pooler_config/single_side_lp_limits_asset_a: expected {} | actual {}",
         expected_asset_a_limit, lp_cfg.single_side_lp_limits.asset_a_limit
     );
-
+    
     verify_equals!(
         ctx,
         key,
