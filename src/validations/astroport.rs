@@ -13,6 +13,7 @@ use std::ops::Range;
 
 use super::CovenantValidationContext;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn verify_astroport_liquid_pooler_config<'a>(
     ctx: &mut CovenantValidationContext<'a>,
     key: &'a str,
@@ -226,7 +227,7 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
         "liquid_pooler_config/single_side_lp_limits_asset_a: expected {} | actual {}",
         expected_asset_a_limit, lp_cfg.single_side_lp_limits.asset_a_limit
     );
-    
+
     verify_equals!(
         ctx,
         key,
@@ -238,9 +239,12 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
 
     field = "single_side_lp_limits_asset_b";
     let asset_b_limit = Decimal::from(lp_cfg.single_side_lp_limits.asset_b_limit.u128());
-    debug!("{}", asset_b_contribution
-    .checked_mul(Decimal::new(single_side_lp_limit_pct as i64, 2))
-    .unwrap());
+    debug!(
+        "{}",
+        asset_b_contribution
+            .checked_mul(Decimal::new(single_side_lp_limit_pct as i64, 2))
+            .unwrap()
+    );
     let expected_asset_b_limit = asset_b_contribution
         .checked_sub(
             asset_b_contribution
