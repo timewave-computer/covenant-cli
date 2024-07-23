@@ -14,7 +14,7 @@ pub async fn verify_expiration<'a>(
     match deadline {
         Expiration::AtHeight(height) => {
             let cur_block = get_latest_block(&ctx.cli_context).await?;
-            if (height as u128) < cur_block {
+            if (height as u128) > cur_block {
                 ctx.valid_field(key, field, "verified".to_owned());
             } else {
                 ctx.invalid_field(
@@ -26,7 +26,7 @@ pub async fn verify_expiration<'a>(
         }
         Expiration::AtTime(timestamp) => {
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
-            if timestamp.seconds() < now.as_secs() {
+            if timestamp.seconds() > now.as_secs() {
                 ctx.valid_field(key, field, "verified".to_owned());
             } else {
                 ctx.invalid_field(
