@@ -174,8 +174,6 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
         // field = "denom_to_pfm_map";
         // field = "fallback_address";
 
-        
-
         // LS info (Neutron -> Stride)
         key = "ls_info";
         let ls_provider_chain = match ctx.ls_provider {

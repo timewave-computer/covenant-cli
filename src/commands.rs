@@ -116,14 +116,11 @@ fn configure_context(
     }
 
     if let Some(pct_setting) = covenant_metadata.get("single_side_lp_limit_pct") {
-        let single_side_lp_limit_pct = pct_setting
-            .as_integer()
-            .unwrap();
+        let single_side_lp_limit_pct = pct_setting.as_integer().unwrap();
         validation_context
             .set_single_side_lp_limit_pct(single_side_lp_limit_pct.try_into().unwrap());
     } else {
-        validation_context
-            .set_single_side_lp_limit_pct(DEFAULT_SINGLE_SIDE_LP_LIMIT_PCT);
+        validation_context.set_single_side_lp_limit_pct(DEFAULT_SINGLE_SIDE_LP_LIMIT_PCT);
     }
 
     Ok(covenant_contract.to_owned())
