@@ -9,12 +9,14 @@ use single_party_pol_covenant::msg as sppc;
 use super::{CovenantValidationContext, Validate};
 use crate::utils::assets::get_chain_asset_info;
 use crate::utils::chain::get_chain_info;
-use crate::utils::path::get_path_info;
+use crate::utils::path::{get_path_info, IBCPath};
+use crate::validations::neutron::verify_expiration;
 use crate::validations::{
     astroport::verify_astroport_liquid_pooler_config,
     contracts::{get_covenant_code_ids, verify_code_id},
     NEUTRON_CHAIN_NAME, STRIDE_CHAIN_NAME, TRANSFER_PORT_ID,
 };
+use crate::validations::{LsProvider, PERSISTENCE_CHAIN_NAME};
 use crate::{required_or_ignored, verify_equals};
 
 /// Validate the single party POL covenant instantiation message
@@ -48,128 +50,25 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
             ctx.valid_field(key, field, "valid".to_owned());
         }
 
+        // Lockup period
+        field = "lockup_period";
+        verify_expiration(ctx, key, field, msg.lockup_period).await?;
+
         // Contract Codes
         key = "contract_codes";
-        match get_covenant_code_ids("v0.1.0".to_owned()).await {
-            Ok(code_ids) => {
-                verify_code_id(
-                    ctx,
-                    "ibc_forwarder_code",
-                    &code_ids,
-                    "ibc_forwarder",
-                    msg.contract_codes.ibc_forwarder_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "holder_code",
-                    &code_ids,
-                    "single_party_pol_holder",
-                    msg.contract_codes.holder_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "clock_code",
-                    &code_ids,
-                    "clock",
-                    msg.contract_codes.clock_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "remote_chain_splitter_code",
-                    &code_ids,
-                    "remote_chain_splitter",
-                    msg.contract_codes.remote_chain_splitter_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "liquid_pooler_code",
-                    &code_ids,
-                    "astroport_liquid_pooler",
-                    msg.contract_codes.liquid_pooler_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "liquid_staker_code",
-                    &code_ids,
-                    "stride_liquid_staker",
-                    msg.contract_codes.liquid_staker_code,
-                );
-                verify_code_id(
-                    ctx,
-                    "interchain_router_code",
-                    &code_ids,
-                    "interchain_router",
-                    msg.contract_codes.interchain_router_code,
-                );
-            }
-            Err(e) => {
-                ctx.invalid(key, e.to_string());
-            }
-        }
+        verify_single_party_pol_covenant_code_ids(ctx, key, &msg.contract_codes).await?;
 
         // Covenant party config
         key = "covenant_party_config";
         let party_chain_name = ctx.party_a_chain_name();
         let path_info =
             get_path_info(&ctx.cli_context, &party_chain_name, NEUTRON_CHAIN_NAME).await?;
+        debug!(
+            "party_a_uses_wasm_port: {}",
+            ctx.party_a_channel_uses_wasm_port
+        );
         let (expected_connection_id, expected_h2p_channel_id, expected_p2h_channel_id) =
-            if path_info.chain_1.chain_name == NEUTRON_CHAIN_NAME {
-                (
-                    path_info.chain_1.connection_id.clone(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_1.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_1.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_2.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_2.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                )
-            } else {
-                (
-                    path_info.chain_2.connection_id.clone(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_2.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_2.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                    path_info
-                        .channels
-                        .iter()
-                        .filter_map(|c| {
-                            if c.chain_1.port_id == TRANSFER_PORT_ID {
-                                Some(c.chain_1.channel_id.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                        .unwrap(),
-                )
-            };
+            get_path_connection_and_channels(&path_info, ctx.party_a_channel_uses_wasm_port);
 
         field = "party_chain_connection_id";
         let party_chain_connection_id = msg.covenant_party_config.party_chain_connection_id.clone();
@@ -269,16 +168,22 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
             );
         }
 
-        // TODO: Validate the rest of the covenant party config
+        //TODO: Validate the rest of the covenant party config
         // field = "party_receiver_addr";
         // field = "addr";
         // field = "denom_to_pfm_map";
         // field = "fallback_address";
 
+        
+
         // LS info (Neutron -> Stride)
         key = "ls_info";
+        let ls_provider_chain = match ctx.ls_provider {
+            LsProvider::Stride => STRIDE_CHAIN_NAME,
+            LsProvider::Persistence => PERSISTENCE_CHAIN_NAME,
+        };
         let path_info =
-            get_path_info(&ctx.cli_context, NEUTRON_CHAIN_NAME, STRIDE_CHAIN_NAME).await?;
+            get_path_info(&ctx.cli_context, NEUTRON_CHAIN_NAME, ls_provider_chain).await?;
         let (expected_connection_id, expected_channel_id, reverse_channel_id) =
             if path_info.chain_1.chain_name == NEUTRON_CHAIN_NAME {
                 path_info
@@ -347,12 +252,23 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
 
         field = "ls_denom";
         let ls_denom = msg.ls_info.ls_denom.clone();
-        let asset_info =
-            get_chain_asset_info(&ctx.cli_context, STRIDE_CHAIN_NAME, &ls_denom).await?;
-        if asset_info.base == ls_denom {
-            ctx.valid_field(key, field, "verified".to_owned());
+        if let Ok(asset_info) =
+            get_chain_asset_info(&ctx.cli_context, ls_provider_chain, &ls_denom).await
+        {
+            if asset_info.base == ls_denom {
+                ctx.valid_field(key, field, "verified".to_owned());
+            } else {
+                ctx.invalid_field(
+                    key,
+                    field,
+                    format!(
+                        "invalid denom: expected {} | actual {}",
+                        asset_info.base, ls_denom
+                    ),
+                );
+            }
         } else {
-            ctx.invalid_field(key, field, format!("could not verify denom: {}", ls_denom));
+            ctx.invalid_field(key, field, format!("unknown denom: {}", ls_denom));
         }
 
         field = "ls_denom_on_neutron";
@@ -574,63 +490,59 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
                 "invalid denom: expected {} | actual {}"
             );
 
-            let ls_path_info = get_path_info(
-                &ctx.cli_context,
-                &ctx.party_a_chain_name(),
-                STRIDE_CHAIN_NAME,
-            )
-            .await?;
-            let (expected_ls_connection_id, expected_ls_p2h_channel_id) =
-                if ls_path_info.chain_1.chain_name == STRIDE_CHAIN_NAME {
-                    (
-                        ls_path_info.chain_1.connection_id.clone(),
-                        ls_path_info
-                            .channels
-                            .iter()
-                            .filter_map(|c| {
-                                if c.chain_2.port_id == TRANSFER_PORT_ID {
-                                    Some(c.chain_2.channel_id.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .next()
-                            .unwrap(),
-                    )
-                } else {
-                    (
-                        ls_path_info.chain_2.connection_id.clone(),
-                        ls_path_info
-                            .channels
-                            .iter()
-                            .filter_map(|c| {
-                                if c.chain_1.port_id == TRANSFER_PORT_ID {
-                                    Some(c.chain_1.channel_id.clone())
-                                } else {
-                                    None
-                                }
-                            })
-                            .next()
-                            .unwrap(),
-                    )
-                };
-
+            // Neutron -> Cosmos Hub
+            // (same as covenant_party_config.party_chain_connection_id)
             field = "party_chain_connection_id";
             verify_equals!(
                 ctx,
                 key,
                 field,
-                expected_ls_connection_id,
+                party_chain_connection_id,
                 ls_fwd_cfg.party_chain_connection_id,
                 "invalid connection id: expected {} | actual {}"
             );
 
+            // Cosmos Hub -> Stride|Persistence
             field = "party_to_host_chain_channel_id";
+            let ls_path_info = get_path_info(
+                &ctx.cli_context,
+                &ctx.party_a_chain_name(),
+                ls_provider_chain,
+            )
+            .await?;
+            let expected_ls_fwdr_p2h_channel_id =
+                if ls_path_info.chain_1.chain_name == ctx.party_a_chain_name() {
+                    ls_path_info
+                        .channels
+                        .iter()
+                        .filter_map(|c| {
+                            if c.chain_1.port_id == TRANSFER_PORT_ID {
+                                Some(c.chain_1.channel_id.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .next()
+                        .unwrap()
+                } else {
+                    ls_path_info
+                        .channels
+                        .iter()
+                        .filter_map(|c| {
+                            if c.chain_2.port_id == TRANSFER_PORT_ID {
+                                Some(c.chain_2.channel_id.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .next()
+                        .unwrap()
+                };
             verify_equals!(
                 ctx,
                 key,
                 field,
-                expected_ls_p2h_channel_id,
+                expected_ls_fwdr_p2h_channel_id,
                 ls_fwd_cfg.party_to_host_chain_channel_id,
                 "invalid channel id: expected {} | actual {}"
             );
@@ -680,9 +592,12 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
                     ctx,
                     key,
                     native_denom,
+                    Decimal::from(get_party_contribution(&msg.lp_forwarder_config).u128()),
                     ls_denom_on_neutron,
+                    Decimal::from(get_party_contribution(&msg.ls_forwarder_config).u128()),
                     lp_cfg,
                     &msg.pool_price_config,
+                    ctx.single_side_lp_limit_pct,
                 )
                 .await?;
             }
@@ -703,5 +618,123 @@ impl<'a> Validate<'a> for SinglePartyPolCovenantInstMsg {
         }
 
         Ok(())
+    }
+}
+
+fn get_path_connection_and_channels(
+    path_info: &IBCPath,
+    channel_uses_wasm_port: bool,
+) -> (String, String, String) {
+    if path_info.chain_1.chain_name == NEUTRON_CHAIN_NAME {
+        path_info
+            .channels
+            .iter()
+            .filter_map(|c| {
+                if c.chain_1.port_id == TRANSFER_PORT_ID
+                    && ((channel_uses_wasm_port && c.chain_2.port_id.starts_with("wasm."))
+                        || (!channel_uses_wasm_port && c.chain_2.port_id == TRANSFER_PORT_ID))
+                {
+                    Some((
+                        path_info.chain_1.connection_id.clone(),
+                        c.chain_1.channel_id.clone(),
+                        c.chain_2.channel_id.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .next()
+            .unwrap()
+    } else {
+        path_info
+            .channels
+            .iter()
+            .filter_map(|c| {
+                if c.chain_2.port_id == TRANSFER_PORT_ID
+                    && ((channel_uses_wasm_port && c.chain_1.port_id.starts_with("wasm."))
+                        || c.chain_1.port_id == TRANSFER_PORT_ID)
+                {
+                    Some((
+                        path_info.chain_2.connection_id.clone(),
+                        c.chain_2.channel_id.clone(),
+                        c.chain_1.channel_id.clone(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .next()
+            .unwrap()
+    }
+}
+
+async fn verify_single_party_pol_covenant_code_ids<'a>(
+    ctx: &mut CovenantValidationContext<'a>,
+    key: &'a str,
+    contract_code_ids: &sppc::CovenantContractCodeIds,
+) -> Result<(), Error> {
+    match get_covenant_code_ids("v0.1.0".to_owned()).await {
+        Ok(code_ids) => {
+            verify_code_id(
+                ctx,
+                "ibc_forwarder_code",
+                &code_ids,
+                "ibc_forwarder",
+                contract_code_ids.ibc_forwarder_code,
+            );
+            verify_code_id(
+                ctx,
+                "holder_code",
+                &code_ids,
+                "single_party_pol_holder",
+                contract_code_ids.holder_code,
+            );
+            verify_code_id(
+                ctx,
+                "clock_code",
+                &code_ids,
+                "clock",
+                contract_code_ids.clock_code,
+            );
+            verify_code_id(
+                ctx,
+                "remote_chain_splitter_code",
+                &code_ids,
+                "remote_chain_splitter",
+                contract_code_ids.remote_chain_splitter_code,
+            );
+            verify_code_id(
+                ctx,
+                "liquid_pooler_code",
+                &code_ids,
+                "astroport_liquid_pooler",
+                contract_code_ids.liquid_pooler_code,
+            );
+            verify_code_id(
+                ctx,
+                "liquid_staker_code",
+                &code_ids,
+                "stride_liquid_staker",
+                contract_code_ids.liquid_staker_code,
+            );
+            verify_code_id(
+                ctx,
+                "interchain_router_code",
+                &code_ids,
+                "interchain_router",
+                contract_code_ids.interchain_router_code,
+            );
+        }
+        Err(e) => {
+            ctx.invalid(key, e.to_string());
+        }
+    }
+    Ok(())
+}
+
+fn get_party_contribution(cfg: &sppc::CovenantPartyConfig) -> cosmwasm_std::Uint128 {
+    match cfg {
+        sppc::CovenantPartyConfig::Interchain(interchain) => interchain.contribution.amount,
+        sppc::CovenantPartyConfig::Native(native) => native.contribution.amount,
     }
 }

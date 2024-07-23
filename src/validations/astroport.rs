@@ -1,11 +1,14 @@
-use crate::utils::astroport::{
-    get_astroport_pair_info, get_astroport_pool_info, CustomPair, StablePair, XykPair,
+use crate::{
+    utils::astroport::{
+        get_astroport_pair_info, get_astroport_pool_info, CustomPair, StablePair, XykPair,
+    },
+    verify_equals,
 };
 use anyhow::Error;
 use astroport_liquid_pooler::msg::AstroportLiquidPoolerConfig;
 use covenant_utils::PoolPriceConfig;
 use log::debug;
-use rust_decimal::Decimal;
+use rust_decimal::{Decimal, RoundingStrategy};
 use std::ops::Range;
 
 use super::CovenantValidationContext;
@@ -14,9 +17,12 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
     ctx: &mut CovenantValidationContext<'a>,
     key: &'a str,
     asset_a_denom: String,
+    asset_a_contribution: Decimal,
     asset_b_denom: String,
+    asset_b_contribution: Decimal,
     lp_cfg: &AstroportLiquidPoolerConfig,
     pool_price_cfg: &PoolPriceConfig,
+    single_side_lp_limit_pct: u32,
 ) -> Result<(), Error> {
     let mut key = key;
     let mut field = "pool_address";
@@ -170,8 +176,7 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
             key,
             field,
             format!(
-                "expected_spot_price: {:.4} | current_pool_price: {:.4}\n\
-                outside of 5% range of current pool price",
+                "expected {:.4} | current pool price {:.4} -> outside of 5% range of current pool price",
                 expected_spot_price, current_pool_price
             ),
         );
@@ -203,9 +208,59 @@ pub async fn verify_astroport_liquid_pooler_config<'a>(
     );
     ctx.valid_field(key, field, format!("{:.0}%", acceptable_price_spread_pct));
 
-    // TODO: Validate single side LP limits
-    // key = "liquid_pooler_config"
-    // field = "single_side_lp_limits";
+    // Ensure Single Side LP limits are within 10% for party contributions
+    key = "liquid_pooler_config";
+    field = "single_side_lp_limits_asset_a";
+    let asset_a_limit = Decimal::from(lp_cfg.single_side_lp_limits.asset_a_limit.u128());
+    debug!("{}", single_side_lp_limit_pct);
+    debug!("{}", Decimal::new(single_side_lp_limit_pct as i64, 2));
+    let expected_asset_a_limit = asset_a_contribution
+        .checked_sub(
+            asset_a_contribution
+                .checked_mul(Decimal::new(single_side_lp_limit_pct as i64, 2))
+                .unwrap(),
+        )
+        .unwrap()
+        .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero);
+    debug!(
+        "liquid_pooler_config/single_side_lp_limits_asset_a: expected {} | actual {}",
+        expected_asset_a_limit, lp_cfg.single_side_lp_limits.asset_a_limit
+    );
+    
+    verify_equals!(
+        ctx,
+        key,
+        field,
+        expected_asset_a_limit,
+        asset_a_limit,
+        "invalid single side lp limit: expected {} | actual {}"
+    );
+
+    field = "single_side_lp_limits_asset_b";
+    let asset_b_limit = Decimal::from(lp_cfg.single_side_lp_limits.asset_b_limit.u128());
+    debug!("{}", asset_b_contribution
+    .checked_mul(Decimal::new(single_side_lp_limit_pct as i64, 2))
+    .unwrap());
+    let expected_asset_b_limit = asset_b_contribution
+        .checked_sub(
+            asset_b_contribution
+                .checked_mul(Decimal::new(single_side_lp_limit_pct as i64, 2))
+                .unwrap(),
+        )
+        .unwrap()
+        .round_dp_with_strategy(0, RoundingStrategy::AwayFromZero);
+    debug!(
+        "liquid_pooler_config/single_side_lp_limits_asset_b: expected {} | actual {}",
+        expected_asset_b_limit, asset_b_limit
+    );
+    verify_equals!(
+        ctx,
+        key,
+        field,
+        expected_asset_b_limit,
+        asset_b_limit,
+        "invalid single side lp limit: expected {} | actual {}"
+    );
 
     Ok(())
 }

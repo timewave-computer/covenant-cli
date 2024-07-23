@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 mod astroport;
 mod contracts;
+mod neutron;
 mod single_party_pol_covenant;
 mod swap_covenant;
 mod two_party_pol_covenant;
@@ -15,8 +16,26 @@ pub use swap_covenant::SwapCovenantInstMsg;
 pub use two_party_pol_covenant::TwoPartyPolCovenantInstMsg;
 
 const NEUTRON_CHAIN_NAME: &str = "neutron";
+const PERSISTENCE_CHAIN_NAME: &str = "persistence";
 const STRIDE_CHAIN_NAME: &str = "stride";
 const TRANSFER_PORT_ID: &str = "transfer";
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub enum LsProvider {
+    #[default]
+    Stride,
+    Persistence,
+}
+
+impl From<&str> for LsProvider {
+    fn from(value: &str) -> Self {
+        match value {
+            "stride" => LsProvider::Stride,
+            "persistence" => LsProvider::Persistence,
+            _ => panic!("Invalid LsProvider"),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(default)]
@@ -26,6 +45,8 @@ pub struct CovenantValidationContext<'a> {
     party_a_chain_name: String,
     party_a_channel_uses_wasm_port: bool,
     party_b_chain_name: String,
+    ls_provider: LsProvider,
+    single_side_lp_limit_pct: u32,
     checks: HashMap<&'a str, Vec<String>>,
     errors: HashMap<&'a str, Vec<String>>,
 }
@@ -54,6 +75,14 @@ impl<'a> CovenantValidationContext<'a> {
 
     pub fn set_party_b_chain_name(&mut self, party: String) {
         self.party_b_chain_name = party;
+    }
+
+    pub fn set_ls_provider(&mut self, provider: LsProvider) {
+        self.ls_provider = provider;
+    }
+
+    pub fn set_single_side_lp_limit_pct(&mut self, limit_pct: u32) {
+        self.single_side_lp_limit_pct = limit_pct;
     }
 
     pub fn checks(&self) -> &HashMap<&'a str, Vec<String>> {

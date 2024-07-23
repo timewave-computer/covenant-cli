@@ -10,6 +10,8 @@ use crate::{
     },
 };
 
+const DEFAULT_SINGLE_SIDE_LP_LIMIT_PCT: u32 = 10;
+
 pub(crate) async fn execute_cmd(
     _ctx: &crate::CliContext,
     cmd: &Commands,
@@ -106,6 +108,22 @@ fn configure_context(
         if party_a_channel_uses_wasm_port {
             validation_context.set_party_a_channel_uses_wasm_port(true);
         }
+    }
+
+    if let Some(ls_provider_setting) = covenant_metadata.get("ls_provider") {
+        let ls_provider = ls_provider_setting.as_str().unwrap();
+        validation_context.set_ls_provider(ls_provider.into());
+    }
+
+    if let Some(pct_setting) = covenant_metadata.get("single_side_lp_limit_pct") {
+        let single_side_lp_limit_pct = pct_setting
+            .as_integer()
+            .unwrap();
+        validation_context
+            .set_single_side_lp_limit_pct(single_side_lp_limit_pct.try_into().unwrap());
+    } else {
+        validation_context
+            .set_single_side_lp_limit_pct(DEFAULT_SINGLE_SIDE_LP_LIMIT_PCT);
     }
 
     Ok(covenant_contract.to_owned())
