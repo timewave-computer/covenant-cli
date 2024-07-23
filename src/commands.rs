@@ -10,6 +10,8 @@ use crate::{
     },
 };
 
+const DEFAULT_SINGLE_SIDE_LP_LIMIT_PCT: u32 = 10;
+
 pub(crate) async fn execute_cmd(
     _ctx: &crate::CliContext,
     cmd: &Commands,
@@ -32,10 +34,10 @@ pub(crate) async fn execute_cmd(
     }
 }
 
-async fn validate_covenant(
+async fn validate_covenant<'a>(
     metadata_file: &String,
     instantiation_file: &String,
-    validation_context: &mut CovenantValidationContext,
+    validation_context: &mut CovenantValidationContext<'a>,
 ) -> Result<(), anyhow::Error> {
     info!("Validating Covenant deployment");
 
@@ -44,25 +46,13 @@ async fn validate_covenant(
     let covenant_metadata = metadata.get("covenant").unwrap().as_table().unwrap();
     debug!("[covenant-metadata] {:?}", covenant_metadata);
 
-    let covenant_contract = covenant_metadata
-        .get("covenant_contract")
-        .unwrap()
-        .as_str()
-        .unwrap();
-    info!("Covenant contract: {:?}", covenant_contract);
-
-    let covenant_party_chain_id = covenant_metadata
-        .get("covenant_party_chain_name")
-        .unwrap()
-        .as_str()
-        .unwrap();
-    validation_context.set_covenant_party_chain_name(covenant_party_chain_id.to_string());
+    let covenant_contract = configure_context(covenant_metadata, validation_context)?;
 
     // Read Covenant instantiation file
     let instantiation: serde_json::Value = load_json(instantiation_file)?;
 
     // Match on covenant type and create wrapper to validate
-    let covenant = match covenant_contract {
+    let covenant = match covenant_contract.as_ref() {
         "valence-covenant-single-party-pol" => SinglePartyPolCovenantInstMsg::new(
             serde_json::from_value(instantiation)
                 .with_context(|| "failed loading single party POL covenant")?,
@@ -86,6 +76,57 @@ async fn validate_covenant(
         .validate(validation_context)
         .await
         .map_err(|e| anyhow::anyhow!(e))
+}
+
+fn configure_context(
+    covenant_metadata: &toml::map::Map<String, toml::Value>,
+    validation_context: &mut CovenantValidationContext,
+) -> Result<String, anyhow::Error> {
+    let covenant_contract = covenant_metadata.get("contract").unwrap().as_str().unwrap();
+    info!("Covenant contract: {:?}", covenant_contract);
+
+    let covenant_party_a_chain_name = covenant_metadata
+        .get("party_a_chain_name")
+        .unwrap()
+        .as_str()
+        .unwrap();
+    validation_context.set_party_a_chain_name(covenant_party_a_chain_name.to_string());
+
+    if covenant_contract == "valence-covenant-two-party-pol"
+        || covenant_contract == "valence-covenant-swap"
+    {
+        let covenant_party_b_chain_name = covenant_metadata
+            .get("party_b_chain_name")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        validation_context.set_party_b_chain_name(covenant_party_b_chain_name.to_string());
+    }
+
+    if let Some(bool_setting) = covenant_metadata.get("party_a_channel_uses_wasm_port") {
+        let party_a_channel_uses_wasm_port = bool_setting.as_bool().unwrap();
+        if party_a_channel_uses_wasm_port {
+            validation_context.set_party_a_channel_uses_wasm_port(true);
+        }
+    }
+
+    if let Some(ls_provider_setting) = covenant_metadata.get("ls_provider") {
+        let ls_provider = ls_provider_setting.as_str().unwrap();
+        validation_context.set_ls_provider(ls_provider.into());
+    }
+
+    if let Some(pct_setting) = covenant_metadata.get("single_side_lp_limit_pct") {
+        let single_side_lp_limit_pct = pct_setting
+            .as_integer()
+            .unwrap();
+        validation_context
+            .set_single_side_lp_limit_pct(single_side_lp_limit_pct.try_into().unwrap());
+    } else {
+        validation_context
+            .set_single_side_lp_limit_pct(DEFAULT_SINGLE_SIDE_LP_LIMIT_PCT);
+    }
+
+    Ok(covenant_contract.to_owned())
 }
 
 fn load_toml(metadata_file: &String) -> Result<toml::Value, anyhow::Error> {

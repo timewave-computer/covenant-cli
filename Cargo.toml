@@ -24,9 +24,18 @@ tokio = { version = "1.37.0", features = ["full"] }
 toml = "0.8.14"
 
 # Covenant contracts
+cosmwasm-std = { version = "1.5.4", features = [
+  "ibc3",
+  "cosmwasm_1_1",
+  "cosmwasm_1_2",
+] }
+cw-utils = "1.0.3"
+covenant-utils = { package = "covenant-utils", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0" }
 single-party-pol-covenant = { package = "valence-covenant-single-party-pol", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
 swap-covenant = { package = "valence-covenant-swap", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
 two-party-pol-covenant = { package = "valence-covenant-two-party-pol", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
+valence-two-party-pol-holder = { package = "valence-two-party-pol-holder", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
+astroport-liquid-pooler = { package = "valence-astroport-liquid-pooler", git = "https://github.com/timewave-computer/covenants", tag = "v0.1.0", features = ["library"] }
 
 [profile.release]
 lto = true
