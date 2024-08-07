@@ -9,6 +9,7 @@ use super::{CovenantValidationContext, Validate};
 use crate::utils::assets::get_chain_asset_info;
 use crate::utils::chain::get_chain_info;
 use crate::utils::path::{get_path_info, IBCPath};
+use crate::utils::validate_party_address;
 use crate::validations::astroport::verify_astroport_liquid_pooler_config;
 use crate::validations::neutron::verify_expiration;
 use crate::validations::{
@@ -289,9 +290,10 @@ async fn verify_party_config<'a>(
                 );
             }
 
-            //TODO: validate addresses
-            // field = "party_receiver_addr";
-            // field = "addr";
+            field = "party_receiver_addr";
+            validate_party_address(ctx, key, field, native_party.party_receiver_addr.as_str());
+            field = "addr";
+            validate_party_address(ctx, key, field, native_party.addr.as_str());
         }
         tppc::CovenantPartyConfig::Interchain(interchain_party) => {
             let path_info =
@@ -449,9 +451,12 @@ async fn verify_party_config<'a>(
                 );
             }
 
+            field = "party_receiver_addr";
+            validate_party_address(ctx, key, field, interchain_party.party_receiver_addr.as_str());
+            field = "addr";
+            validate_party_address(ctx, key, field, interchain_party.addr.as_str());
+
             //TODO: Validate the rest of the covenant party config
-            // field = "party_receiver_addr";
-            // field = "addr";
             // field = "denom_to_pfm_map";
             // field = "fallback_address";
         }
